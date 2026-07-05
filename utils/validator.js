@@ -22,13 +22,12 @@ const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
 // Lista blanca de productos válidos de la tienda.
 // Esto evita que se envíen pedidos con productos falsos o manipulados.
 export const PRODUCTOS_VALIDOS = [
-  '110 Diamantes',
-  '340 Diamantes',
-  '570 Diamantes',
-  '1100 Diamantes',
-  '2300 Diamantes',
-  '6000 Diamantes',
-  'Pase Booyah',
+  '120 Diamantes',
+  '372 Diamantes',
+  '624 Diamantes',
+  '1272 Diamantes',
+  '2596 Diamantes',
+  '6720 Diamantes',
 ];
 
 /**
