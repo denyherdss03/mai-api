@@ -28,6 +28,7 @@ export const PRODUCTOS_VALIDOS = [
   '1272 Diamantes',
   '2596 Diamantes',
   '6720 Diamantes',
+  'Pase Booyah',
 ];
 
 /**
