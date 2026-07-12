@@ -1,7 +1,7 @@
 {
   "name": "mai-api",
   "version": "1.0.0",
-  "description": "Backend seguro en Vercel Serverless Functions para una tienda de recargas digitales de Free Fire. Recibe pedidos desde la web (Readdy AI) y los envía automáticamente a un grupo privado de Telegram.",
+  "description": "Backend seguro en Vercel Serverless Functions para una tienda de recargas digitales de Free Fire.",
   "type": "module",
   "main": "api/order.js",
   "scripts": {
@@ -12,7 +12,8 @@
     "form-data": "^4.0.1",
     "formidable": "^3.5.2",
     "uuid": "^11.0.5",
-    "@supabase/supabase-js": "^2.45.0"
+    "@supabase/supabase-js": "^2.45.0",
+    "@anthropic-ai/sdk": "^0.27.0"
   },
   "engines": {
     "node": ">=18.x"
