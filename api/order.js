@@ -1,7 +1,7 @@
 /**
  * api/order.js
  * Endpoint: POST /api/order
- * Recibe pedido, verifica comprobante con IA, guarda en Supabase y envía a Telegram.
+ * Recibe pedido, verifica comprobante con IA, guarda en Supabase y envia a Telegram.
  */
 
 import fs from 'fs';
@@ -85,7 +85,7 @@ async function verificarComprobante(imageBuffer, mimeType) {
             },
             {
               type: 'text',
-              text: 'Analiza esta imagen. Es un comprobante o captura de pago de una billetera digital o banco como Yape, Plin, BCP, Interbank, BBVA, Agora, Lemon, transferencia bancaria? Responde SOLO con SI o NO.',
+              text: 'Eres un verificador de comprobantes de pago para una tienda peruana. Analiza esta imagen y determina si muestra algun tipo de pago o transaccion de dinero. APRUEBA (responde SI) si la imagen muestra cualquiera de estos casos: 1) Captura de pantalla de Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki u otra billetera o banco. 2) Foto tomada con camara a un celular o pantalla donde se vea un comprobante de pago, transferencia o transaccion de dinero. 3) Voucher o recibo de pago fotografiado. 4) Cualquier imagen que muestre una transaccion, transferencia o movimiento de dinero, aunque sea foto de baja calidad o tomada en angulo. RECHAZA (responde NO) solo si la imagen es claramente: meme, selfie, rostro de persona, paisaje, animal, comida, captura de videojuego, contenido sexual, contenido violento, logo sin contexto de pago, o cualquier imagen que definitivamente no tenga relacion con un pago o transaccion de dinero. En caso de duda, responde SI. Responde UNICAMENTE con SI o NO.',
             },
           ],
         },
@@ -93,7 +93,7 @@ async function verificarComprobante(imageBuffer, mimeType) {
     });
 
     const respuesta = response.content[0].text.trim().toUpperCase();
-    return respuesta.startsWith('SI') || respuesta.startsWith('SÍ');
+    return respuesta.startsWith('SI');
 
   } catch (error) {
     console.error('Error verificando comprobante con IA:', error);
@@ -105,7 +105,7 @@ export default async function handler(req, res) {
   if (handleCors(req, res)) return;
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'Método no permitido. Solo se acepta POST.' });
+    return res.status(405).json({ success: false, error: 'Metodo no permitido. Solo se acepta POST.' });
   }
 
   const contentType = req.headers['content-type'] || '';
@@ -152,7 +152,7 @@ export default async function handler(req, res) {
       cleanupTempFile(comprobanteFile);
       return res.status(400).json({
         success: false,
-        error: 'La imagen no parece ser un comprobante de pago valido. Por favor sube una captura de Yape, Plin u otra billetera digital.',
+        error: 'La imagen no es un comprobante de pago valido. Por favor sube una captura o foto de tu pago realizado en Yape, Plin u otra billetera digital.',
       });
     }
 
