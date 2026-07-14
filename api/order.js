@@ -104,6 +104,15 @@ async function verificarComprobante(imageBuffer, mimeType) {
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
 
+  // Rate Limiting
+  const rateLimit = checkRateLimit(req);
+  if (!rateLimit.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: rateLimit.error
+    });
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Metodo no permitido. Solo se acepta POST.' });
   }
