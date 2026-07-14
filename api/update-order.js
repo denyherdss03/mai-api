@@ -9,7 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 import { handleCors } from '../utils/cors.js';
 
 // Token secreto para que solo el bot pueda llamar este endpoint
-const BOT_SECRET = process.env.BOT_UPDATE_SECRET || 'mai-store-secret-2026';
+const BOT_SECRET = process.env.BOT_UPDATE_SECRET;
 
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
