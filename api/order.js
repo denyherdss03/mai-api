@@ -10,7 +10,7 @@ import formidable from 'formidable';
 import { createClient } from '@supabase/supabase-js';
 import Anthropic from '@anthropic-ai/sdk';
 
-import { handleCors } from '../utils/cors.js';
+import { handleCors, checkRateLimit } from '../utils/cors.js';
 import { validateOrderFields, validateImageFile, validateProductoExists, PRECIOS } from '../utils/validator.js';
 import { sendOrderToTelegram } from '../lib/telegram.js';
 
