@@ -95,4 +95,130 @@ async function verificarComprobante(imageBuffer, mimeType) {
     const respuesta = response.content[0].text.trim().toUpperCase();
     return respuesta.startsWith('SI');
 
-  } catch
+  } catch (error) {
+    console.error('Error verificando comprobante con IA:', error);
+    return true;
+  }
+}
+
+export default async function handler(req, res) {
+  if (handleCors(req, res)) return;
+
+  // Rate Limiting
+  const rateLimit = checkRateLimit(req);
+  if (!rateLimit.allowed) {
+    return res.status(429).json({
+      success: false,
+      error: rateLimit.error
+    });
+  }
+
+  if (req.method !== 'POST') {
+    return res.status(405).json({ success: false, error: 'Metodo no permitido. Solo se acepta POST.' });
+  }
+
+  const contentType = req.headers['content-type'] || '';
+  if (!contentType.toLowerCase().includes('multipart/form-data')) {
+    return res.status(400).json({ success: false, error: 'Content-Type invalido. Se requiere multipart/form-data.' });
+  }
+
+  let comprobanteFile = null;
+
+  try {
+    const { fields, files } = await parseForm(req);
+
+    const producto = normalizeField(fields.producto)?.trim();
+    const jugador = normalizeField(fields.jugador)?.trim();
+    const idJugador = normalizeField(fields.idJugador)?.trim();
+    comprobanteFile = normalizeField(files.comprobante);
+
+    const productoValidation = validateProductoExists(producto);
+    if (!productoValidation.valid) {
+      cleanupTempFile(comprobanteFile);
+      return res.status(400).json({ success: false, error: productoValidation.error });
+    }
+
+    const precio = PRECIOS[producto];
+
+    const fieldsValidation = validateOrderFields({ producto, precio, jugador, idJugador });
+    if (!fieldsValidation.valid) {
+      cleanupTempFile(comprobanteFile);
+      return res.status(400).json({ success: false, error: fieldsValidation.error });
+    }
+
+    const imageValidation = validateImageFile(comprobanteFile);
+    if (!imageValidation.valid) {
+      cleanupTempFile(comprobanteFile);
+      return res.status(400).json({ success: false, error: imageValidation.error });
+    }
+
+    const imageBuffer = fs.readFileSync(comprobanteFile.filepath);
+    const mimeType = comprobanteFile.mimetype || 'image/jpeg';
+
+    const esComprobante = await verificarComprobante(imageBuffer, mimeType);
+
+    if (!esComprobante) {
+      cleanupTempFile(comprobanteFile);
+      return res.status(400).json({
+        success: false,
+        error: 'La imagen no es un comprobante de pago valido. Por favor sube una captura o foto de tu pago realizado en Yape, Plin u otra billetera digital.',
+      });
+    }
+
+    const orderId = generateOrderId();
+    const { fecha, hora } = getFormattedDateTime();
+
+    const supabase = createClient(
+      process.env.SUPABASE_URL,
+      process.env.SUPABASE_SECRET_KEY
+    );
+
+    const { error: dbError } = await supabase
+      .from('pedidos')
+      .insert([{
+        order_id: orderId,
+        producto,
+        precio,
+        jugador,
+        id_jugador: idJugador,
+        estado: 'pendiente',
+        fecha,
+        hora,
+      }]);
+
+    if (dbError) {
+      console.error('Error guardando en Supabase:', dbError);
+    }
+
+    await sendOrderToTelegram({
+      orderId,
+      producto,
+      precio,
+      jugador,
+      idJugador,
+      fecha,
+      hora,
+      imageBuffer,
+      imageName: comprobanteFile.originalFilename || 'comprobante.jpg',
+    });
+
+    cleanupTempFile(comprobanteFile);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Pedido enviado correctamente.',
+      orderId,
+      precio,
+    });
+
+  } catch (error) {
+    console.error('Error procesando el pedido:', error);
+    cleanupTempFile(comprobanteFile);
+
+    if (error?.code === 1009 || /maxFileSize/i.test(error?.message || '')) {
+      return res.status(400).json({ success: false, error: 'El comprobante supera el tamano maximo permitido (5 MB).' });
+    }
+
+    return res.status(500).json({ success: false, error: 'Error interno del servidor. Intenta nuevamente.' });
+  }
+}
