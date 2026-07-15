@@ -1,9 +1,7 @@
 /**
  * api/webhook.js
  * Webhook del bot de Telegram.
- * Maneja:
- * 1. Callbacks de botones (verificado/rechazado) sobre mensajes con foto (caption)
- * 2. Mensajes de texto antiguos (por compatibilidad)
+ * Maneja callbacks de botones (verificado/rechazado)
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -13,31 +11,28 @@ export default async function handler(req, res) {
   if (handleCors(req, res)) return;
 
   if (req.method !== 'POST') {
-    return res.status(405).json({ success: false, error: 'MÃ©todo no permitido.' });
+    return res.status(405).json({ success: false, error: 'Metodo no permitido.' });
   }
 
   try {
     const body = req.body;
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
 
-    // ==================== MANEJAR CALLBACK_QUERY (BOTONES) ====================
+    // MANEJAR CALLBACK_QUERY (cuando presionas los botones)
     if (body?.callback_query) {
       const callbackQuery = body.callback_query;
       const callbackId = callbackQuery.id;
-      const data = callbackQuery.data; // "verificado_pagado" o "pago_invalido"
+      const data = callbackQuery.data;
       const message = callbackQuery.message;
       const messageId = message.message_id;
       const chatId = message.chat.id;
-
-      // El pedido se envÃ­a como FOTO con caption, no como texto plano.
-      // Por eso buscamos primero en message.caption y, si no existe, en message.text
       const messageText = message.caption || message.text || '';
       const hasPhoto = Boolean(message.photo);
 
-      // Extraer el order_id del mensaje (ej: "Pedido: MAI-ABC123")
+      // Extraer el order_id del mensaje
       const orderMatch = messageText.match(/MAI-[A-Z0-9]+/i);
       if (!orderMatch) {
-        await respondToCallback(botToken, callbackId, 'âŒ No se encontrÃ³ el ID del pedido.');
+        await respondToCallback(botToken, callbackId, 'No se encontro el ID del pedido.');
         return res.status(200).json({ ok: true });
       }
 
@@ -46,17 +41,24 @@ export default async function handler(req, res) {
       let responseText = '';
       let editedCaption = '';
 
-      // Definir estado y mensajes segÃºn el botÃ³n presionado
-      if (data === 'verificado_pagado') {
+      if (data === 'verificado:' + orderId || data.startsWith('verificado:')) {
         newStatus = 'completado';
-        responseText = 'âœ… Pago VERIFICADO correctamente.';
-        editedCaption = `âœ… *PAGO VERIFICADO* âœ…\n\nPedido: \`${orderId}\`\nEstado: COMPLETADO\n\nEl cliente verÃ¡ "COMPRA EXITOSA" en la pÃ¡gina.`;
-      } else if (data === 'pago_invalido') {
+        responseText = 'Pago VERIFICADO correctamente.';
+        editedCaption =
+          'PAGO VERIFICADO\n\n' +
+          'Pedido: `' + orderId + '`\n' +
+          'Estado: COMPLETADO\n\n' +
+          'El cliente vera COMPRA EXITOSA en la pagina.';
+      } else if (data === 'invalido:' + orderId || data.startsWith('invalido:')) {
         newStatus = 'rechazado';
-        responseText = 'âŒ Pago RECHAZADO.';
-        editedCaption = `âŒ *PAGO RECHAZADO* âŒ\n\nPedido: \`${orderId}\`\nEstado: RECHAZADO\n\nEl cliente verÃ¡ "PAGO RECHAZADO" en la pÃ¡gina.`;
+        responseText = 'Pago RECHAZADO.';
+        editedCaption =
+          'PAGO RECHAZADO\n\n' +
+          'Pedido: `' + orderId + '`\n' +
+          'Estado: RECHAZADO\n\n' +
+          'El cliente vera PAGO RECHAZADO en la pagina.';
       } else {
-        await respondToCallback(botToken, callbackId, 'â“ AcciÃ³n desconocida.');
+        await respondToCallback(botToken, callbackId, 'Accion desconocida.');
         return res.status(200).json({ ok: true });
       }
 
@@ -73,32 +75,20 @@ export default async function handler(req, res) {
 
       if (error) {
         console.error('Error actualizando pedido:', error);
-        await respondToCallback(botToken, callbackId, 'âš ï¸ Error al actualizar en BD.');
+        await respondToCallback(botToken, callbackId, 'Error al actualizar en BD.');
         return res.status(200).json({ ok: true });
       }
 
-      // Responder al callback (quita la animaciÃ³n de carga en Telegram)
+      // Responder al callback
       await respondToCallback(botToken, callbackId, responseText);
 
-      // Editar el mensaje original para quitar botones y mostrar resultado.
-      // IMPORTANTE: si el mensaje tiene foto hay que usar editMessageCaption,
-      // NO editMessageText (ese solo funciona en mensajes de solo texto).
+      // Editar el mensaje original para quitar botones
       const editEndpoint = hasPhoto ? 'editMessageCaption' : 'editMessageText';
       const editBody = hasPhoto
-        ? {
-            chat_id: chatId,
-            message_id: messageId,
-            caption: editedCaption,
-            parse_mode: 'Markdown',
-          }
-        : {
-            chat_id: chatId,
-            message_id: messageId,
-            text: editedCaption,
-            parse_mode: 'Markdown',
-          };
+        ? { chat_id: chatId, message_id: messageId, caption: editedCaption, parse_mode: 'Markdown' }
+        : { chat_id: chatId, message_id: messageId, text: editedCaption, parse_mode: 'Markdown' };
 
-      await fetch(`https://api.telegram.org/bot${botToken}/${editEndpoint}`, {
+      await fetch('https://api.telegram.org/bot' + botToken + '/' + editEndpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(editBody),
@@ -107,14 +97,13 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // ==================== MANEJAR MENSAJES DE TEXTO (compatibilidad) ====================
+    // MANEJAR MENSAJES DE TEXTO (compatibilidad con el sistema anterior)
     const message = body?.message;
     if (!message || !message.text) {
       return res.status(200).json({ ok: true });
     }
 
     const text = message.text.toLowerCase().trim();
-
     const match = text.match(/pedido\s+(mai-[a-z0-9]+)\s+verificado\s+y\s+pagado/i);
 
     if (!match) {
@@ -140,12 +129,12 @@ export default async function handler(req, res) {
 
     const chatId = message.chat.id;
 
-    await fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+    await fetch('https://api.telegram.org/bot' + botToken + '/sendMessage', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: `âœ… Pedido ${orderId} marcado como COMPLETADO.\nEl cliente verÃ¡ "COMPRA EXITOSA" en la pÃ¡gina.`,
+        text: 'Pedido ' + orderId + ' marcado como COMPLETADO.\nEl cliente vera COMPRA EXITOSA en la pagina.',
       }),
     });
 
@@ -157,10 +146,9 @@ export default async function handler(req, res) {
   }
 }
 
-// ==================== FUNCIÃ“N AUXILIAR ====================
 async function respondToCallback(botToken, callbackId, text) {
   try {
-    await fetch(`https://api.telegram.org/bot${botToken}/answerCallbackQuery`, {
+    await fetch('https://api.telegram.org/bot' + botToken + '/answerCallbackQuery', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
