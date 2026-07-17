@@ -37,24 +37,50 @@ export default async function handler(req, res) {
       }
 
       const orderId = orderMatch[0].toUpperCase();
+
+      // Buscar datos del pedido en Supabase
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SECRET_KEY
+      );
+
+      const { data: pedido } = await supabase
+        .from('pedidos')
+        .select('jugador, id_jugador, producto, precio')
+        .eq('order_id', orderId)
+        .single();
+
+      const jugador = pedido?.jugador || 'Desconocido';
+      const idJugador = pedido?.id_jugador || 'Desconocido';
+      const producto = pedido?.producto || 'Desconocido';
+      const precio = pedido?.precio || 'Desconocido';
+
       let newStatus = '';
       let responseText = '';
       let editedCaption = '';
 
-      if (data === 'verificado:' + orderId || data.startsWith('verificado:')) {
+      if (data.startsWith('verificado:')) {
         newStatus = 'completado';
         responseText = 'Pago VERIFICADO correctamente.';
         editedCaption =
           'PAGO VERIFICADO\n\n' +
           'Pedido: `' + orderId + '`\n' +
+          'Jugador: ' + jugador + '\n' +
+          'ID Jugador: `' + idJugador + '`\n' +
+          'Producto: ' + producto + '\n' +
+          'Precio: ' + precio + '\n' +
           'Estado: COMPLETADO\n\n' +
           'El cliente vera COMPRA EXITOSA en la pagina.';
-      } else if (data === 'invalido:' + orderId || data.startsWith('invalido:')) {
+      } else if (data.startsWith('invalido:')) {
         newStatus = 'rechazado';
         responseText = 'Pago RECHAZADO.';
         editedCaption =
           'PAGO RECHAZADO\n\n' +
           'Pedido: `' + orderId + '`\n' +
+          'Jugador: ' + jugador + '\n' +
+          'ID Jugador: `' + idJugador + '`\n' +
+          'Producto: ' + producto + '\n' +
+          'Precio: ' + precio + '\n' +
           'Estado: RECHAZADO\n\n' +
           'El cliente vera PAGO RECHAZADO en la pagina.';
       } else {
@@ -63,11 +89,6 @@ export default async function handler(req, res) {
       }
 
       // Actualizar estado en Supabase
-      const supabase = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_SECRET_KEY
-      );
-
       const { error } = await supabase
         .from('pedidos')
         .update({ estado: newStatus })
@@ -97,7 +118,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ok: true });
     }
 
-    // MANEJAR MENSAJES DE TEXTO (compatibilidad con el sistema anterior)
+    // MANEJAR MENSAJES DE TEXTO (compatibilidad)
     const message = body?.message;
     if (!message || !message.text) {
       return res.status(200).json({ ok: true });
@@ -117,6 +138,18 @@ export default async function handler(req, res) {
       process.env.SUPABASE_SECRET_KEY
     );
 
+    // Buscar datos del pedido
+    const { data: pedido } = await supabase
+      .from('pedidos')
+      .select('jugador, id_jugador, producto, precio')
+      .eq('order_id', orderId)
+      .single();
+
+    const jugador = pedido?.jugador || 'Desconocido';
+    const idJugador = pedido?.id_jugador || 'Desconocido';
+    const producto = pedido?.producto || 'Desconocido';
+    const precio = pedido?.precio || 'Desconocido';
+
     const { error } = await supabase
       .from('pedidos')
       .update({ estado: 'completado' })
@@ -134,7 +167,16 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         chat_id: chatId,
-        text: 'Pedido ' + orderId + ' marcado como COMPLETADO.\nEl cliente vera COMPRA EXITOSA en la pagina.',
+        text:
+          'PAGO VERIFICADO\n\n' +
+          'Pedido: `' + orderId + '`\n' +
+          'Jugador: ' + jugador + '\n' +
+          'ID Jugador: `' + idJugador + '`\n' +
+          'Producto: ' + producto + '\n' +
+          'Precio: ' + precio + '\n' +
+          'Estado: COMPLETADO\n\n' +
+          'El cliente vera COMPRA EXITOSA en la pagina.',
+        parse_mode: 'Markdown',
       }),
     });
 
