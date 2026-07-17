@@ -34,16 +34,16 @@ export const PRODUCTOS_VALIDOS = [
 ];
 
 export const PRECIOS = {
-  '120 Diamantes': 'S/3.20',
+  '120 Diamantes': 'S/3.10',
   '372 Diamantes': 'S/8.90',
-  '624 Diamantes': 'S/14.50',
-  '1272 Diamantes': 'S/27.50',
-  '2596 Diamantes': 'S/52.90',
-  '6720 Diamantes': 'S/127.90',
-  'Pase Booyah': 'S/5.50',
+  '624 Diamantes': 'S/14.38',
+  '1272 Diamantes': 'S/27.12',
+  '2596 Diamantes': 'S/52.00',
+  '6720 Diamantes': 'S/125.90',
+  'Pase Booyah': 'S/5.00',
   'Tarjeta Semanal Basica': 'S/1.60',
-  'Tarjeta Semanal': 'S/6.50',
-  'Tarjeta Mensual': 'S/31.90',
+  'Tarjeta Semanal': 'S/6.40',
+  'Tarjeta Mensual': 'S/31.00',
 };
 
 export function validateOrderFields({ producto, precio, jugador, idJugador }) {
