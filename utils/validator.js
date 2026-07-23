@@ -21,12 +21,12 @@ const ALLOWED_EXTENSIONS = ['.jpg', '.jpeg', '.png'];
 
 // Lista blanca de productos válidos de la tienda.
 export const PRODUCTOS_VALIDOS = [
-  '120 Diamantes',
-  '372 Diamantes',
-  '624 Diamantes',
-  '1272 Diamantes',
-  '2596 Diamantes',
-  '6720 Diamantes',
+  '110 Diamantes',
+  '341 Diamantes',
+  '572 Diamantes',
+  '1160 Diamantes',
+  '2398 Diamantes',
+  '6160 Diamantes',
   'Pase Booyah',
   'Tarjeta Semanal Basica',
   'Tarjeta Semanal',
@@ -34,16 +34,16 @@ export const PRODUCTOS_VALIDOS = [
 ];
 
 export const PRECIOS = {
-  '120 Diamantes': 'S/3.10',
-  '372 Diamantes': 'S/8.90',
-  '624 Diamantes': 'S/14.38',
-  '1272 Diamantes': 'S/27.12',
-  '2596 Diamantes': 'S/52.00',
-  '6720 Diamantes': 'S/125.90',
-  'Pase Booyah': 'S/5.00',
-  'Tarjeta Semanal Basica': 'S/1.60',
-  'Tarjeta Semanal': 'S/6.40',
-  'Tarjeta Mensual': 'S/31.00',
+  '110 Diamantes': 'S/3.00',
+  '341 Diamantes': 'S/8.87',
+  '572 Diamantes': 'S/14.25',
+  '1160 Diamantes': 'S/27.00',
+  '2398 Diamantes': 'S/51.00',
+  '6160 Diamantes': 'S/123.91',
+  'Pase Booyah': 'S/4.00',
+  'Tarjeta Semanal Basica': 'S/1.52',
+  'Tarjeta Semanal': 'S/6.38',
+  'Tarjeta Mensual': 'S/29.00',
 };
 
 export function validateOrderFields({ producto, precio, jugador, idJugador }) {
