@@ -1,9 +1,10 @@
 {
   "version": 2,
   "functions": {
-    "api/order.js": {
-      "memory": 1024,
-      "maxDuration": 15
-    }
-  }
+    "api/order.js": { "memory": 1024, "maxDuration": 15 }
+  },
+  "routes": [
+    { "src": "/api/(.*)", "dest": "/api/$1" },
+    { "src": "/(.*)", "dest": "/public/$1" }
+  ]
 }
