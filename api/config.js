@@ -1,7 +1,7 @@
 /**
  * api/config.js
  * Endpoint: GET /api/config
- * Devuelve configuracion de la tienda (estado, stock, precios)
+ * Devuelve configuracion de la tienda (tienda abierta/cerrada, stock, precios)
  */
 
 import { handleCors } from '../utils/cors.js';
@@ -41,15 +41,25 @@ export default async function handler(req, res) {
       success: true,
       tienda_abierta: config.tienda_abierta === 'true',
       stock: {
-        pase_booyah: config.stock_pase_booyah === 'true',
-        fragmentos: config.stock_fragmentos === 'true',
-        cajas_evo: config.stock_cajas_evo === 'true',
+        pase_booyah: config.stock_pase_booyah !== 'false',
+        fragmentos: config.stock_fragmentos !== 'false',
+        cajas_evo: config.stock_cajas_evo !== 'false',
       },
       productos,
     });
 
   } catch (error) {
     console.error('Error obteniendo config:', error);
-    return res.status(500).json({ success: false, error: 'Error interno del servidor.' });
+    // Si hay error, devolver valores por defecto (tienda abierta)
+    return res.status(200).json({
+      success: true,
+      tienda_abierta: true,
+      stock: {
+        pase_booyah: true,
+        fragmentos: true,
+        cajas_evo: true,
+      },
+      productos: [],
+    });
   }
 }
