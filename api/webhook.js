@@ -1,16 +1,40 @@
 /**
  * api/webhook.js
  * Webhook del bot de Telegram.
- * Maneja callbacks de botones (verificado/rechazado) y comandos de stock.
+ * Maneja callbacks de botones y comandos de texto.
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { handleCors } from '../utils/cors.js';
-import { PRODUCTOS_VALIDOS } from '../utils/validator.js';
+
+async function updateConfig(supabase, clave, valor) {
+  const { error } = await supabase
+    .from('configuracion')
+    .update({ valor, updated_at: new Date().toISOString() })
+    .eq('clave', clave);
+  return !error;
+}
+
+async function sendMessage(botToken, chatId, text) {
+  await fetch('https://api.telegram.org/bot' + botToken + '/sendMessage', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'Markdown' }),
+  });
+}
+
+async function respondToCallback(botToken, callbackId, text) {
+  try {
+    await fetch('https://api.telegram.org/bot' + botToken + '/answerCallbackQuery', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ callback_query_id: callbackId, text, show_alert: false }),
+    });
+  } catch (e) { console.error('Error respondiendo callback:', e); }
+}
 
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
-
   if (req.method !== 'POST') {
     return res.status(405).json({ success: false, error: 'Metodo no permitido.' });
   }
@@ -18,8 +42,9 @@ export default async function handler(req, res) {
   try {
     const body = req.body;
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
+    const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
-    // MANEJAR CALLBACK_QUERY (cuando presionas los botones)
+    // MANEJAR CALLBACK_QUERY (botones)
     if (body?.callback_query) {
       const callbackQuery = body.callback_query;
       const callbackId = callbackQuery.id;
@@ -30,7 +55,6 @@ export default async function handler(req, res) {
       const messageText = message.caption || message.text || '';
       const hasPhoto = Boolean(message.photo);
 
-      // Extraer el order_id del mensaje
       const orderMatch = messageText.match(/MAI-[A-Z0-9]+/i);
       if (!orderMatch) {
         await respondToCallback(botToken, callbackId, 'No se encontro el ID del pedido.');
@@ -38,12 +62,6 @@ export default async function handler(req, res) {
       }
 
       const orderId = orderMatch[0].toUpperCase();
-
-      // Buscar datos del pedido en Supabase
-      const supabase = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_SECRET_KEY
-      );
 
       const { data: pedido } = await supabase
         .from('pedidos')
@@ -89,22 +107,9 @@ export default async function handler(req, res) {
         return res.status(200).json({ ok: true });
       }
 
-      // Actualizar estado en Supabase
-      const { error } = await supabase
-        .from('pedidos')
-        .update({ estado: newStatus })
-        .eq('order_id', orderId);
-
-      if (error) {
-        console.error('Error actualizando pedido:', error);
-        await respondToCallback(botToken, callbackId, 'Error al actualizar en BD.');
-        return res.status(200).json({ ok: true });
-      }
-
-      // Responder al callback
+      await supabase.from('pedidos').update({ estado: newStatus }).eq('order_id', orderId);
       await respondToCallback(botToken, callbackId, responseText);
 
-      // Editar el mensaje original para quitar botones
       const editEndpoint = hasPhoto ? 'editMessageCaption' : 'editMessageText';
       const editBody = hasPhoto
         ? { chat_id: chatId, message_id: messageId, caption: editedCaption, parse_mode: 'Markdown' }
@@ -128,128 +133,118 @@ export default async function handler(req, res) {
     const text = message.text.toLowerCase().trim();
     const chatId = message.chat.id;
 
-    // --- COMANDOS DE STOCK (AGOTADO / DISPONIBLE) ---
-    const stockMatch = text.match(/^(cajas evo|fragmentos evo|pase booyah)\s*:?\s*(\d+(?:\.\d+)?)?\s+(agotado|disponible)/i);
-    if (stockMatch) {
-      const tipo = stockMatch[1].toLowerCase().trim();
-      const cantidad = stockMatch[2] ? stockMatch[2].trim() : null;
-      const estadoStr = stockMatch[3].toLowerCase().trim();
+    // ===== COMANDOS DE TIENDA =====
 
-      let productoNombre = '';
-      if (tipo === 'pase booyah') {
-        productoNombre = 'Pase Booyah';
-      } else if (tipo === 'cajas evo' && cantidad) {
-        productoNombre = `Cajas Evo ${cantidad}`;
-      } else if (tipo === 'fragmentos evo' && cantidad) {
-        productoNombre = `Fragmentos Evo ${cantidad}`;
-      }
+    // Abrir/cerrar tienda
+    if (text === 'tienda abrir' || text === '/tienda abrir') {
+      await updateConfig(supabase, 'tienda_abierta', 'true');
+      await sendMessage(botToken, chatId, '✅ Tienda ABIERTA. Los clientes pueden comprar.');
+      return res.status(200).json({ ok: true });
+    }
 
-      const supabase = createClient(
-        process.env.SUPABASE_URL,
-        process.env.SUPABASE_SECRET_KEY
+    if (text === 'tienda cerrar' || text === '/tienda cerrar') {
+      await updateConfig(supabase, 'tienda_abierta', 'false');
+      await sendMessage(botToken, chatId, '🔴 Tienda CERRADA. Los clientes veran el mensaje de cierre.');
+      return res.status(200).json({ ok: true });
+    }
+
+    // Stock Pase Booyah
+    if (text === 'agotado booyah' || text === '/agotado booyah') {
+      await updateConfig(supabase, 'stock_pase_booyah', 'false');
+      await sendMessage(botToken, chatId, '⚠️ Pase Booyah marcado como AGOTADO en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+
+    if (text === 'disponible booyah' || text === '/disponible booyah') {
+      await updateConfig(supabase, 'stock_pase_booyah', 'true');
+      await sendMessage(botToken, chatId, '✅ Pase Booyah marcado como DISPONIBLE en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+
+    // Stock Fragmentos
+    if (text === 'agotado fragmentos' || text === '/agotado fragmentos') {
+      await updateConfig(supabase, 'stock_fragmentos', 'false');
+      await sendMessage(botToken, chatId, '⚠️ Fragmentos marcados como AGOTADOS en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+
+    if (text === 'disponible fragmentos' || text === '/disponible fragmentos') {
+      await updateConfig(supabase, 'stock_fragmentos', 'true');
+      await sendMessage(botToken, chatId, '✅ Fragmentos marcados como DISPONIBLES en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+
+    // Stock Cajas Evo
+    if (text === 'agotado cajas' || text === '/agotado cajas') {
+      await updateConfig(supabase, 'stock_cajas_evo', 'false');
+      await sendMessage(botToken, chatId, '⚠️ Cajas Evo marcadas como AGOTADAS en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+
+    if (text === 'disponible cajas' || text === '/disponible cajas') {
+      await updateConfig(supabase, 'stock_cajas_evo', 'true');
+      await sendMessage(botToken, chatId, '✅ Cajas Evo marcadas como DISPONIBLES en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+
+    // Ver estado actual
+    if (text === 'estado' || text === '/estado') {
+      const { data: configs } = await supabase.from('configuracion').select('clave, valor');
+      const cfg = {};
+      configs.forEach(({ clave, valor }) => { cfg[clave] = valor; });
+
+      const msg =
+        'ESTADO ACTUAL DE LA TIENDA\n\n' +
+        'Tienda: ' + (cfg.tienda_abierta === 'true' ? '✅ ABIERTA' : '🔴 CERRADA') + '\n' +
+        'Pase Booyah: ' + (cfg.stock_pase_booyah === 'true' ? '✅ Disponible' : '⚠️ Agotado') + '\n' +
+        'Fragmentos: ' + (cfg.stock_fragmentos === 'true' ? '✅ Disponible' : '⚠️ Agotado') + '\n' +
+        'Cajas Evo: ' + (cfg.stock_cajas_evo === 'true' ? '✅ Disponible' : '⚠️ Agotado') + '\n\n' +
+        'Comandos disponibles:\n' +
+        'tienda abrir / tienda cerrar\n' +
+        'agotado booyah / disponible booyah\n' +
+        'agotado fragmentos / disponible fragmentos\n' +
+        'agotado cajas / disponible cajas';
+
+      await sendMessage(botToken, chatId, msg);
+      return res.status(200).json({ ok: true });
+    }
+
+    // Compatibilidad: verificar pedido por texto
+    const matchVerificado = text.match(/pedido\s+(mai-[a-z0-9]+)\s+verificado\s+y\s+pagado/i);
+    if (matchVerificado) {
+      const orderId = matchVerificado[1].toUpperCase();
+
+      const { data: pedido } = await supabase
+        .from('pedidos')
+        .select('jugador, id_jugador, producto, precio')
+        .eq('order_id', orderId)
+        .single();
+
+      const jugador = pedido?.jugador || 'Desconocido';
+      const idJugador = pedido?.id_jugador || 'Desconocido';
+      const producto = pedido?.producto || 'Desconocido';
+      const precio = pedido?.precio || 'Desconocido';
+
+      await supabase.from('pedidos').update({ estado: 'completado' }).eq('order_id', orderId);
+
+      await sendMessage(botToken, chatId,
+        'PAGO VERIFICADO\n\n' +
+        'Pedido: `' + orderId + '`\n' +
+        'Jugador: ' + jugador + '\n' +
+        'ID Jugador: `' + idJugador + '`\n' +
+        'Producto: ' + producto + '\n' +
+        'Precio: ' + precio + '\n' +
+        'Estado: COMPLETADO\n\n' +
+        'El cliente vera COMPRA EXITOSA en la pagina.'
       );
 
-      if (productoNombre && PRODUCTOS_VALIDOS.some(p => p.toLowerCase() === productoNombre.toLowerCase())) {
-        const agotado = estadoStr === 'agotado';
-
-        await supabase
-          .from('stock')
-          .upsert({ producto: productoNombre, agotado }, { onConflict: 'producto' });
-
-        await fetch('https://api.telegram.org/bot' + botToken + '/sendMessage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: `✅ *${productoNombre}* ha sido marcado como *${estadoStr.toUpperCase()}*.`,
-            parse_mode: 'Markdown',
-          }),
-        });
-      } else {
-        await fetch('https://api.telegram.org/bot' + botToken + '/sendMessage', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: chatId,
-            text: '❌ Producto no reconocido. Formatos válidos:\n• cajas evo 7 agotado\n• fragmentos evo 100 disponible\n• pase booyah agotado',
-          }),
-        });
-      }
       return res.status(200).json({ ok: true });
     }
-
-    // --- COMANDO DE VERIFICACIÓN DE PEDIDO (compatibilidad) ---
-    const match = text.match(/pedido\s+(mai-[a-z0-9]+)\s+verificado\s+y\s+pagado/i);
-    if (!match) {
-      return res.status(200).json({ ok: true });
-    }
-
-    const orderId = match[1].toUpperCase();
-
-    const supabase = createClient(
-      process.env.SUPABASE_URL,
-      process.env.SUPABASE_SECRET_KEY
-    );
-
-    const { data: pedido } = await supabase
-      .from('pedidos')
-      .select('jugador, id_jugador, producto, precio')
-      .eq('order_id', orderId)
-      .single();
-
-    const jugador = pedido?.jugador || 'Desconocido';
-    const idJugador = pedido?.id_jugador || 'Desconocido';
-    const producto = pedido?.producto || 'Desconocido';
-    const precio = pedido?.precio || 'Desconocido';
-
-    const { error } = await supabase
-      .from('pedidos')
-      .update({ estado: 'completado' })
-      .eq('order_id', orderId);
-
-    if (error) {
-      console.error('Error actualizando pedido:', error);
-      return res.status(200).json({ ok: true });
-    }
-
-    await fetch('https://api.telegram.org/bot' + botToken + '/sendMessage', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text:
-          'PAGO VERIFICADO\n\n' +
-          'Pedido: `' + orderId + '`\n' +
-          'Jugador: ' + jugador + '\n' +
-          'ID Jugador: `' + idJugador + '`\n' +
-          'Producto: ' + producto + '\n' +
-          'Precio: ' + precio + '\n' +
-          'Estado: COMPLETADO\n\n' +
-          'El cliente vera COMPRA EXITOSA en la pagina.',
-        parse_mode: 'Markdown',
-      }),
-    });
 
     return res.status(200).json({ ok: true });
 
   } catch (error) {
     console.error('Error en webhook:', error);
     return res.status(200).json({ ok: true });
-  }
-}
-
-async function respondToCallback(botToken, callbackId, text) {
-  try {
-    await fetch('https://api.telegram.org/bot' + botToken + '/answerCallbackQuery', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        callback_query_id: callbackId,
-        text: text,
-        show_alert: false,
-      }),
-    });
-  } catch (error) {
-    console.error('Error respondiendo callback:', error);
   }
 }
