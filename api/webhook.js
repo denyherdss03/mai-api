@@ -1,7 +1,6 @@
 /**
  * api/webhook.js
  * Webhook del bot de Telegram.
- * Maneja callbacks de botones y comandos de texto.
  */
 
 import { createClient } from '@supabase/supabase-js';
@@ -126,118 +125,138 @@ export default async function handler(req, res) {
 
     // MANEJAR MENSAJES DE TEXTO
     const message = body?.message;
-    if (!message || !message.text) {
-      return res.status(200).json({ ok: true });
-    }
+    if (!message || !message.text) return res.status(200).json({ ok: true });
 
     const text = message.text.toLowerCase().trim();
     const chatId = message.chat.id;
 
-    // ===== COMANDOS DE TIENDA =====
-
-    // Abrir/cerrar tienda
-    if (text === 'tienda abrir' || text === '/tienda abrir') {
+    // ===== TIENDA =====
+    if (text === 'tienda abrir') {
       await updateConfig(supabase, 'tienda_abierta', 'true');
       await sendMessage(botToken, chatId, '✅ Tienda ABIERTA. Los clientes pueden comprar.');
       return res.status(200).json({ ok: true });
     }
-
-    if (text === 'tienda cerrar' || text === '/tienda cerrar') {
+    if (text === 'tienda cerrar') {
       await updateConfig(supabase, 'tienda_abierta', 'false');
-      await sendMessage(botToken, chatId, '🔴 Tienda CERRADA. Los clientes veran el mensaje de cierre.');
+      await sendMessage(botToken, chatId, '🔴 Tienda CERRADA.');
       return res.status(200).json({ ok: true });
     }
 
-    // Stock Pase Booyah
-    if (text === 'agotado booyah' || text === '/agotado booyah') {
+    // ===== BOOYAH =====
+    if (text === 'agotado booyah') {
       await updateConfig(supabase, 'stock_pase_booyah', 'false');
-      await sendMessage(botToken, chatId, '⚠️ Pase Booyah marcado como AGOTADO en la pagina.');
+      await sendMessage(botToken, chatId, '⚠️ Pase Booyah AGOTADO en la pagina.');
       return res.status(200).json({ ok: true });
     }
-
-    if (text === 'disponible booyah' || text === '/disponible booyah') {
+    if (text === 'disponible booyah') {
       await updateConfig(supabase, 'stock_pase_booyah', 'true');
-      await sendMessage(botToken, chatId, '✅ Pase Booyah marcado como DISPONIBLE en la pagina.');
+      await sendMessage(botToken, chatId, '✅ Pase Booyah DISPONIBLE en la pagina.');
       return res.status(200).json({ ok: true });
     }
 
-    // Stock Fragmentos
-    if (text === 'agotado fragmentos' || text === '/agotado fragmentos') {
-      await updateConfig(supabase, 'stock_fragmentos', 'false');
-      await sendMessage(botToken, chatId, '⚠️ Fragmentos marcados como AGOTADOS en la pagina.');
-      return res.status(200).json({ ok: true });
-    }
-
-    if (text === 'disponible fragmentos' || text === '/disponible fragmentos') {
-      await updateConfig(supabase, 'stock_fragmentos', 'true');
-      await sendMessage(botToken, chatId, '✅ Fragmentos marcados como DISPONIBLES en la pagina.');
-      return res.status(200).json({ ok: true });
-    }
-
-    // Stock Cajas Evo
-    if (text === 'agotado cajas' || text === '/agotado cajas') {
+    // ===== CAJAS EVO - GENERAL =====
+    if (text === 'agotado cajas') {
       await updateConfig(supabase, 'stock_cajas_evo', 'false');
-      await sendMessage(botToken, chatId, '⚠️ Cajas Evo marcadas como AGOTADAS en la pagina.');
+      await sendMessage(botToken, chatId, '⚠️ TODAS las Cajas Evo AGOTADAS en la pagina.');
       return res.status(200).json({ ok: true });
     }
-
-    if (text === 'disponible cajas' || text === '/disponible cajas') {
+    if (text === 'disponible cajas') {
       await updateConfig(supabase, 'stock_cajas_evo', 'true');
-      await sendMessage(botToken, chatId, '✅ Cajas Evo marcadas como DISPONIBLES en la pagina.');
+      await sendMessage(botToken, chatId, '✅ TODAS las Cajas Evo DISPONIBLES en la pagina.');
       return res.status(200).json({ ok: true });
     }
 
-    // Ver estado actual
-    if (text === 'estado' || text === '/estado') {
+    // ===== CAJAS EVO - INDIVIDUAL =====
+    const cajasValidas = ['7', '12', '25', '52', '120', '280'];
+    for (const cant of cajasValidas) {
+      if (text === 'agotado caja ' + cant) {
+        await updateConfig(supabase, 'stock_caja_' + cant, 'false');
+        await sendMessage(botToken, chatId, '⚠️ Caja Evo ' + cant + ' AGOTADA en la pagina.');
+        return res.status(200).json({ ok: true });
+      }
+      if (text === 'disponible caja ' + cant) {
+        await updateConfig(supabase, 'stock_caja_' + cant, 'true');
+        await sendMessage(botToken, chatId, '✅ Caja Evo ' + cant + ' DISPONIBLE en la pagina.');
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // ===== FRAGMENTOS EVO - GENERAL =====
+    if (text === 'agotado fragmentos') {
+      await updateConfig(supabase, 'stock_fragmentos', 'false');
+      await sendMessage(botToken, chatId, '⚠️ TODOS los Fragmentos Evo AGOTADOS en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+    if (text === 'disponible fragmentos') {
+      await updateConfig(supabase, 'stock_fragmentos', 'true');
+      await sendMessage(botToken, chatId, '✅ TODOS los Fragmentos Evo DISPONIBLES en la pagina.');
+      return res.status(200).json({ ok: true });
+    }
+
+    // ===== FRAGMENTOS EVO - INDIVIDUAL =====
+    const fragsValidos = ['35', '50', '100', '250', '600', '1400'];
+    for (const cant of fragsValidos) {
+      if (text === 'agotado fragmento ' + cant) {
+        await updateConfig(supabase, 'stock_frag_' + cant, 'false');
+        await sendMessage(botToken, chatId, '⚠️ Fragmento Evo ' + cant + ' AGOTADO en la pagina.');
+        return res.status(200).json({ ok: true });
+      }
+      if (text === 'disponible fragmento ' + cant) {
+        await updateConfig(supabase, 'stock_frag_' + cant, 'true');
+        await sendMessage(botToken, chatId, '✅ Fragmento Evo ' + cant + ' DISPONIBLE en la pagina.');
+        return res.status(200).json({ ok: true });
+      }
+    }
+
+    // ===== ESTADO =====
+    if (text === 'estado') {
       const { data: configs } = await supabase.from('configuracion').select('clave, valor');
       const cfg = {};
       configs.forEach(({ clave, valor }) => { cfg[clave] = valor; });
 
       const msg =
-        'ESTADO ACTUAL DE LA TIENDA\n\n' +
+        'ESTADO ACTUAL\n\n' +
         'Tienda: ' + (cfg.tienda_abierta === 'true' ? '✅ ABIERTA' : '🔴 CERRADA') + '\n' +
-        'Pase Booyah: ' + (cfg.stock_pase_booyah === 'true' ? '✅ Disponible' : '⚠️ Agotado') + '\n' +
-        'Fragmentos: ' + (cfg.stock_fragmentos === 'true' ? '✅ Disponible' : '⚠️ Agotado') + '\n' +
-        'Cajas Evo: ' + (cfg.stock_cajas_evo === 'true' ? '✅ Disponible' : '⚠️ Agotado') + '\n\n' +
-        'Comandos disponibles:\n' +
+        'Pase Booyah: ' + (cfg.stock_pase_booyah !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n\n' +
+        'CAJAS EVO:\n' +
+        '7: ' + (cfg.stock_caja_7 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '12: ' + (cfg.stock_caja_12 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '25: ' + (cfg.stock_caja_25 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '52: ' + (cfg.stock_caja_52 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '120: ' + (cfg.stock_caja_120 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '280: ' + (cfg.stock_caja_280 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n\n' +
+        'FRAGMENTOS EVO:\n' +
+        '35: ' + (cfg.stock_frag_35 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '50: ' + (cfg.stock_frag_50 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '100: ' + (cfg.stock_frag_100 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '250: ' + (cfg.stock_frag_250 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '600: ' + (cfg.stock_frag_600 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n' +
+        '1400: ' + (cfg.stock_frag_1400 !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n\n' +
+        'COMANDOS:\n' +
         'tienda abrir / tienda cerrar\n' +
         'agotado booyah / disponible booyah\n' +
+        'agotado cajas / disponible cajas\n' +
+        'agotado caja 7 / disponible caja 7\n' +
         'agotado fragmentos / disponible fragmentos\n' +
-        'agotado cajas / disponible cajas';
+        'agotado fragmento 35 / disponible fragmento 35';
 
       await sendMessage(botToken, chatId, msg);
       return res.status(200).json({ ok: true });
     }
 
-    // Compatibilidad: verificar pedido por texto
+    // ===== COMPATIBILIDAD TEXTO =====
     const matchVerificado = text.match(/pedido\s+(mai-[a-z0-9]+)\s+verificado\s+y\s+pagado/i);
     if (matchVerificado) {
       const orderId = matchVerificado[1].toUpperCase();
-
-      const { data: pedido } = await supabase
-        .from('pedidos')
-        .select('jugador, id_jugador, producto, precio')
-        .eq('order_id', orderId)
-        .single();
-
+      const { data: pedido } = await supabase.from('pedidos').select('jugador, id_jugador, producto, precio').eq('order_id', orderId).single();
       const jugador = pedido?.jugador || 'Desconocido';
       const idJugador = pedido?.id_jugador || 'Desconocido';
       const producto = pedido?.producto || 'Desconocido';
       const precio = pedido?.precio || 'Desconocido';
-
       await supabase.from('pedidos').update({ estado: 'completado' }).eq('order_id', orderId);
-
       await sendMessage(botToken, chatId,
-        'PAGO VERIFICADO\n\n' +
-        'Pedido: `' + orderId + '`\n' +
-        'Jugador: ' + jugador + '\n' +
-        'ID Jugador: `' + idJugador + '`\n' +
-        'Producto: ' + producto + '\n' +
-        'Precio: ' + precio + '\n' +
-        'Estado: COMPLETADO\n\n' +
-        'El cliente vera COMPRA EXITOSA en la pagina.'
+        'PAGO VERIFICADO\n\nPedido: `' + orderId + '`\nJugador: ' + jugador + '\nID Jugador: `' + idJugador + '`\nProducto: ' + producto + '\nPrecio: ' + precio + '\nEstado: COMPLETADO\n\nEl cliente vera COMPRA EXITOSA en la pagina.'
       );
-
       return res.status(200).json({ ok: true });
     }
 
