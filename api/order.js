@@ -58,7 +58,7 @@ async function verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId
 
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 100,
+      max_tokens: 150,
       messages: [{
         role: 'user',
         content: [
@@ -68,37 +68,51 @@ async function verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId
           },
           {
             type: 'text',
-            text: `Eres un verificador de comprobantes de pago para una tienda peruana de recargas de videojuegos.
+            text: `Eres un sistema de verificacion de comprobantes de pago para una tienda peruana de recargas de videojuegos Free Fire.
 
-Analiza esta imagen y determina si es un comprobante de pago real.
+Tu unica tarea es determinar si la imagen es un comprobante de pago de dinero real.
 
-APRUEBA (responde SI) SOLO si la imagen muestra:
-- Captura de pantalla de Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki
-- Transferencia bancaria o voucher de pago
-- Foto tomada con camara a una pantalla que muestra un pago real
+UN COMPROBANTE DE PAGO VALIDO debe mostrar CLARAMENTE:
+- Nombre de una aplicacion de pagos o banco (Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, Niubiz, u otro banco o billetera digital)
+- Un monto de dinero en soles (S/) o dolares
+- Una fecha y hora de la transaccion
+- Un numero de operacion o codigo de transaccion
+- El nombre del destinatario o emisor
 
-RECHAZA (responde NO) si la imagen es:
-- Dibujo animado, caricatura, anime o ilustracion
-- Foto de juguete, peluche o muñeco
-- Meme, gif animado o imagen graciosa
-- Selfie, foto de persona o rostro
-- Paisaje, animal, comida o naturaleza
-- Captura de videojuego o aplicacion que no sea de pagos
-- Contenido inapropiado o violento
-- Logo, publicidad o imagen de producto
-- Cualquier imagen que NO sea claramente un comprobante de pago real
+TAMBIEN ES VALIDO si es una FOTO TOMADA CON CAMARA a una pantalla de celular o computadora que muestre claramente uno de los comprobantes descritos arriba, aunque la foto sea tomada en angulo o con poca luz, siempre que se pueda leer la informacion del pago.
 
-Responde UNICAMENTE con SI o NO.`,
+RECHAZA ABSOLUTAMENTE TODO lo que no sea un comprobante de pago, incluyendo:
+- Fotos de personas, rostros, cuerpos, selfies
+- Fotos de documentos de identidad (DNI, pasaporte, carnet)
+- Imagenes de animales, mascotas
+- Paisajes, naturaleza, edificios
+- Comida, bebidas
+- Capturas de chats o conversaciones de WhatsApp, Telegram u otras apps
+- Capturas de videojuegos, aplicaciones que no sean de pagos
+- Memes, GIFs, imagenes graciosas
+- Dibujos, ilustraciones, animaciones, anime, caricaturas
+- Imagenes de QR sin contexto de pago visible
+- Fotos de productos, ropa, objetos
+- Contenido sexual o inapropiado
+- Publicidad o logos sin transaccion
+- Capturas de redes sociales (Facebook, Instagram, TikTok, etc)
+- Cualquier imagen que NO muestre claramente una transaccion de dinero completada
+
+Si tienes CUALQUIER duda de si es un comprobante real de pago, responde NO.
+
+Responde UNICAMENTE con SI si es un comprobante valido, o NO si no lo es.`,
           },
         ],
       }],
     });
 
     const respuesta = response.content[0].text.trim().toUpperCase();
+    console.log('IA respuesta para ' + orderId + ': ' + respuesta);
+
     if (!respuesta.startsWith('SI')) {
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
       await supabase.from('pedidos').update({ estado: 'rechazado' }).eq('order_id', orderId);
-      console.log('Pedido ' + orderId + ' rechazado por IA: imagen no valida.');
+      console.log('Pedido ' + orderId + ' rechazado por IA.');
     }
   } catch (error) {
     console.error('Error IA segundo plano:', error.message);
