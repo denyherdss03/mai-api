@@ -1,7 +1,6 @@
 /**
  * api/order.js
  * Endpoint: POST /api/order
- * Responde rapido al cliente, verifica con IA en segundo plano.
  */
 
 import fs from 'fs';
@@ -14,9 +13,7 @@ import { handleCors, checkRateLimit } from '../utils/cors.js';
 import { validateOrderFields, validateImageFile, validateProductoExists, PRECIOS } from '../utils/validator.js';
 import { sendOrderToTelegram } from '../lib/telegram.js';
 
-export const config = {
-  api: { bodyParser: false },
-};
+export const config = { api: { bodyParser: false } };
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -71,7 +68,27 @@ async function verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId
           },
           {
             type: 'text',
-            text: 'Eres un verificador de comprobantes de pago para una tienda peruana. Analiza esta imagen. APRUEBA (SI) si muestra: captura de Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, transferencia bancaria, voucher de pago, o foto de celular mostrando un pago. RECHAZA (NO) si es claramente: meme, selfie, paisaje, animal, comida, captura de juego, contenido inapropiado. En caso de duda responde SI. Responde UNICAMENTE SI o NO.',
+            text: `Eres un verificador de comprobantes de pago para una tienda peruana de recargas de videojuegos.
+
+Analiza esta imagen y determina si es un comprobante de pago real.
+
+APRUEBA (responde SI) SOLO si la imagen muestra:
+- Captura de pantalla de Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki
+- Transferencia bancaria o voucher de pago
+- Foto tomada con camara a una pantalla que muestra un pago real
+
+RECHAZA (responde NO) si la imagen es:
+- Dibujo animado, caricatura, anime o ilustracion
+- Foto de juguete, peluche o muñeco
+- Meme, gif animado o imagen graciosa
+- Selfie, foto de persona o rostro
+- Paisaje, animal, comida o naturaleza
+- Captura de videojuego o aplicacion que no sea de pagos
+- Contenido inapropiado o violento
+- Logo, publicidad o imagen de producto
+- Cualquier imagen que NO sea claramente un comprobante de pago real
+
+Responde UNICAMENTE con SI o NO.`,
           },
         ],
       }],
@@ -81,7 +98,7 @@ async function verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId
     if (!respuesta.startsWith('SI')) {
       const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
       await supabase.from('pedidos').update({ estado: 'rechazado' }).eq('order_id', orderId);
-      console.log('Pedido ' + orderId + ' rechazado por IA.');
+      console.log('Pedido ' + orderId + ' rechazado por IA: imagen no valida.');
     }
   } catch (error) {
     console.error('Error IA segundo plano:', error.message);
@@ -168,17 +185,14 @@ export default async function handler(req, res) {
       precio,
     });
 
-    // Verificar con IA en segundo plano
     verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId);
 
   } catch (error) {
     console.error('Error procesando pedido:', error);
     cleanupTempFile(comprobanteFile);
-
     if (error?.code === 1009 || /maxFileSize/i.test(error?.message || '')) {
       return res.status(400).json({ success: false, error: 'El comprobante supera los 5 MB.' });
     }
-
     return res.status(500).json({ success: false, error: 'Error interno del servidor. Intenta nuevamente.' });
   }
 }
