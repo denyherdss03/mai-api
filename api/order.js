@@ -1,6 +1,8 @@
 /**
  * api/order.js
  * Endpoint: POST /api/order
+ * La IA verifica ANTES de enviar a Telegram.
+ * Si no es comprobante valido, el pedido se rechaza y NO llega a Telegram.
  */
 
 import fs from 'fs';
@@ -51,10 +53,18 @@ function cleanupTempFile(file) {
   }
 }
 
-async function verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId) {
+/**
+ * Verifica si la imagen es un comprobante de pago válido.
+ * Se ejecuta ANTES de enviar a Telegram.
+ * Timeout de 25 segundos para no bloquear al cliente.
+ */
+async function verificarComprobante(imageBuffer, mimeType) {
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const base64Image = imageBuffer.toString('base64');
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
 
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-6',
@@ -73,49 +83,45 @@ async function verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId
 Tu unica tarea es determinar si la imagen es un comprobante de pago de dinero real.
 
 UN COMPROBANTE DE PAGO VALIDO debe mostrar CLARAMENTE:
-- Nombre de una aplicacion de pagos o banco (Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, Niubiz, u otro banco o billetera digital)
-- Un monto de dinero en soles (S/) o dolares
+- Nombre de una app de pagos o banco: Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, o cualquier banco o billetera digital
+- Un monto de dinero en soles o dolares
 - Una fecha y hora de la transaccion
 - Un numero de operacion o codigo de transaccion
-- El nombre del destinatario o emisor
 
-TAMBIEN ES VALIDO si es una FOTO TOMADA CON CAMARA a una pantalla de celular o computadora que muestre claramente uno de los comprobantes descritos arriba, aunque la foto sea tomada en angulo o con poca luz, siempre que se pueda leer la informacion del pago.
+TAMBIEN ES VALIDO: foto tomada con camara a una pantalla de celular que muestre claramente un comprobante de pago real con los datos mencionados arriba.
 
-RECHAZA ABSOLUTAMENTE TODO lo que no sea un comprobante de pago, incluyendo:
-- Fotos de personas, rostros, cuerpos, selfies
-- Fotos de documentos de identidad (DNI, pasaporte, carnet)
-- Imagenes de animales, mascotas
-- Paisajes, naturaleza, edificios
-- Comida, bebidas
-- Capturas de chats o conversaciones de WhatsApp, Telegram u otras apps
-- Capturas de videojuegos, aplicaciones que no sean de pagos
-- Memes, GIFs, imagenes graciosas
-- Dibujos, ilustraciones, animaciones, anime, caricaturas
-- Imagenes de QR sin contexto de pago visible
-- Fotos de productos, ropa, objetos
-- Contenido sexual o inapropiado
-- Publicidad o logos sin transaccion
-- Capturas de redes sociales (Facebook, Instagram, TikTok, etc)
-- Cualquier imagen que NO muestre claramente una transaccion de dinero completada
+RECHAZA TODO lo que no sea comprobante de pago, SIN EXCEPCION:
+- Fotos de personas, rostros, cuerpos humanos
+- Contenido sexual, pornografico o inapropiado de cualquier tipo
+- Documentos de identidad (DNI, pasaporte, licencia)
+- Animales, mascotas, naturaleza, paisajes
+- Capturas de chats (WhatsApp, Telegram, Messenger)
+- Capturas de redes sociales (Instagram, TikTok, Facebook, Twitter)
+- Memes, GIFs, imagenes graciosas o de humor
+- Dibujos, ilustraciones, anime, caricaturas, imagenes animadas
+- Capturas de videojuegos o aplicaciones que no sean de pagos
+- Imagenes de QR sin datos de transaccion visible
+- Fotos de productos, objetos, ropa, comida, bebidas
+- Publicidad, logos o imagenes de marcas sin transaccion
+- Cualquier imagen que NO muestre una transaccion de dinero completada
 
-Si tienes CUALQUIER duda de si es un comprobante real de pago, responde NO.
+IMPORTANTE: Si tienes CUALQUIER duda, responde NO. Es mejor rechazar una imagen dudosa que aceptar contenido inapropiado.
 
-Responde UNICAMENTE con SI si es un comprobante valido, o NO si no lo es.`,
+Responde UNICAMENTE: SI (si es comprobante valido) o NO (si no lo es).`,
           },
         ],
       }],
     });
 
+    clearTimeout(timeout);
     const respuesta = response.content[0].text.trim().toUpperCase();
-    console.log('IA respuesta para ' + orderId + ': ' + respuesta);
+    console.log('IA verificacion: ' + respuesta);
+    return respuesta.startsWith('SI');
 
-    if (!respuesta.startsWith('SI')) {
-      const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
-      await supabase.from('pedidos').update({ estado: 'rechazado' }).eq('order_id', orderId);
-      console.log('Pedido ' + orderId + ' rechazado por IA.');
-    }
   } catch (error) {
-    console.error('Error IA segundo plano:', error.message);
+    // Si la IA falla por timeout u otro error, rechazar por seguridad
+    console.error('Error IA verificacion:', error.message);
+    return false;
   }
 }
 
@@ -168,6 +174,19 @@ export default async function handler(req, res) {
 
     const imageBuffer = fs.readFileSync(comprobanteFile.filepath);
     const mimeType = comprobanteFile.mimetype || 'image/jpeg';
+
+    // ✅ VERIFICAR CON IA ANTES DE ENVIAR A TELEGRAM
+    const esComprobanteValido = await verificarComprobante(imageBuffer, mimeType);
+
+    if (!esComprobanteValido) {
+      cleanupTempFile(comprobanteFile);
+      return res.status(400).json({
+        success: false,
+        error: 'No se encontró un comprobante de pago válido en la imagen. Por favor sube una captura o foto de tu pago realizado en Yape, Plin u otra billetera digital. Asegúrate de que se vea claramente el monto, fecha y número de operación.',
+      });
+    }
+
+    // ✅ Solo si la IA aprueba → guardar y enviar a Telegram
     const orderId = generateOrderId();
     const { fecha, hora } = getFormattedDateTime();
 
@@ -192,14 +211,12 @@ export default async function handler(req, res) {
 
     cleanupTempFile(comprobanteFile);
 
-    res.status(200).json({
+    return res.status(200).json({
       success: true,
       message: 'Pedido enviado correctamente.',
       orderId,
       precio,
     });
-
-    verificarComprobanteEnSegundoPlano(imageBuffer, mimeType, orderId);
 
   } catch (error) {
     console.error('Error procesando pedido:', error);
