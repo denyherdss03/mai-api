@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js';
 
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
+
   if (req.method !== 'GET') {
     return res.status(405).json({ success: false, error: 'Metodo no permitido.' });
   }
@@ -35,24 +36,24 @@ export default async function handler(req, res) {
         cajas_evo: cfg.stock_cajas_evo !== 'false',
       },
       stock_individual: {
-        stock_caja_7: cfg.stock_caja_7 !== 'false',
-        stock_caja_12: cfg.stock_caja_12 !== 'false',
-        stock_caja_25: cfg.stock_caja_25 !== 'false',
-        stock_caja_52: cfg.stock_caja_52 !== 'false',
-        stock_caja_120: cfg.stock_caja_120 !== 'false',
-        stock_caja_280: cfg.stock_caja_280 !== 'false',
-        stock_frag_35: cfg.stock_frag_35 !== 'false',
-        stock_frag_50: cfg.stock_frag_50 !== 'false',
-        stock_frag_100: cfg.stock_frag_100 !== 'false',
-        stock_frag_250: cfg.stock_frag_250 !== 'false',
-        stock_frag_600: cfg.stock_frag_600 !== 'false',
+        stock_caja_7:    cfg.stock_caja_7 !== 'false',
+        stock_caja_12:   cfg.stock_caja_12 !== 'false',
+        stock_caja_25:   cfg.stock_caja_25 !== 'false',
+        stock_caja_52:   cfg.stock_caja_52 !== 'false',
+        stock_caja_120:  cfg.stock_caja_120 !== 'false',
+        stock_caja_280:  cfg.stock_caja_280 !== 'false',
+        stock_frag_35:   cfg.stock_frag_35 !== 'false',
+        stock_frag_50:   cfg.stock_frag_50 !== 'false',
+        stock_frag_100:  cfg.stock_frag_100 !== 'false',
+        stock_frag_250:  cfg.stock_frag_250 !== 'false',
+        stock_frag_600:  cfg.stock_frag_600 !== 'false',
         stock_frag_1400: cfg.stock_frag_1400 !== 'false',
       },
       productos,
     });
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Error config:', error);
     return res.status(200).json({
       success: true,
       tienda_abierta: true,
