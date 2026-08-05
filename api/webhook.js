@@ -1,20 +1,14 @@
 /**
  * api/webhook.js
- * Webhook del bot de Telegram con validacion de firma y proteccion doble click.
  */
 
 import { createClient } from '@supabase/supabase-js';
 import { handleCors } from '../utils/cors.js';
-import crypto from 'crypto';
 
-/**
- * Valida que el request viene realmente de Telegram
- * usando el token del bot como secreto
- */
 function validarWebhookTelegram(req) {
   const secretToken = req.headers['x-telegram-bot-api-secret-token'];
   const BOT_SECRET = process.env.BOT_UPDATE_SECRET;
-  if (!BOT_SECRET) return true; // Si no hay secret configurado, permitir
+  if (!BOT_SECRET) return true;
   if (!secretToken) return false;
   return secretToken === BOT_SECRET;
 }
@@ -45,6 +39,13 @@ async function updateConfig(supabase, clave, valor) {
   return !error;
 }
 
+// Actualiza múltiples claves a la vez
+async function updateConfigMultiple(supabase, claves, valor) {
+  for (const clave of claves) {
+    await updateConfig(supabase, clave, valor);
+  }
+}
+
 export default async function handler(req, res) {
   if (handleCors(req, res)) return;
 
@@ -52,9 +53,7 @@ export default async function handler(req, res) {
     return res.status(405).json({ success: false, error: 'Metodo no permitido.' });
   }
 
-  // Validar que viene de Telegram
   if (!validarWebhookTelegram(req)) {
-    console.warn('Webhook rechazado: firma invalida');
     return res.status(401).json({ success: false, error: 'No autorizado.' });
   }
 
@@ -63,7 +62,7 @@ export default async function handler(req, res) {
     const botToken = process.env.TELEGRAM_BOT_TOKEN;
     const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SECRET_KEY);
 
-    // MANEJAR CALLBACK_QUERY (botones)
+    // MANEJAR BOTONES
     if (body?.callback_query) {
       const callbackQuery = body.callback_query;
       const callbackId = callbackQuery.id;
@@ -82,14 +81,12 @@ export default async function handler(req, res) {
 
       const orderId = orderMatch[0].toUpperCase();
 
-      // Verificar estado actual para evitar doble procesamiento
       const { data: pedidoActual } = await supabase
         .from('pedidos')
         .select('estado, jugador, id_jugador, producto, precio')
         .eq('order_id', orderId)
         .single();
 
-      // Proteccion doble click: si ya fue procesado, no cambiar
       if (pedidoActual?.estado === 'completado' || pedidoActual?.estado === 'rechazado') {
         const estadoActual = pedidoActual.estado === 'completado' ? 'COMPLETADO' : 'RECHAZADO';
         await respondToCallback(botToken, callbackId, 'Este pedido ya fue ' + estadoActual + '.');
@@ -158,39 +155,50 @@ export default async function handler(req, res) {
     const text = message.text.toLowerCase().trim();
     const chatId = message.chat.id;
 
+    const CLAVES_CAJAS = ['stock_cajas_evo','stock_caja_7','stock_caja_12','stock_caja_25','stock_caja_52','stock_caja_120','stock_caja_280'];
+    const CLAVES_FRAGS = ['stock_fragmentos','stock_frag_35','stock_frag_50','stock_frag_100','stock_frag_250','stock_frag_600','stock_frag_1400'];
+
     // TIENDA
     if (text === 'tienda abrir') {
       await updateConfig(supabase, 'tienda_abierta', 'true');
-      await sendMessage(botToken, chatId, '✅ Tienda ABIERTA.');
+      await sendMessage(botToken, chatId, '✅ Tienda ABIERTA. Los clientes pueden comprar.');
       return res.status(200).json({ ok: true });
     }
     if (text === 'tienda cerrar') {
       await updateConfig(supabase, 'tienda_abierta', 'false');
-      await sendMessage(botToken, chatId, '🔴 Tienda CERRADA.');
+      await sendMessage(botToken, chatId, '🔴 Tienda CERRADA. Los clientes ven mensaje de cierre.');
       return res.status(200).json({ ok: true });
     }
 
     // BOOYAH
     if (text === 'agotado booyah') {
       await updateConfig(supabase, 'stock_pase_booyah', 'false');
-      await sendMessage(botToken, chatId, '⚠️ Pase Booyah AGOTADO.');
+      await sendMessage(botToken, chatId, '⚠️ Pase Booyah AGOTADO en la pagina.');
       return res.status(200).json({ ok: true });
     }
     if (text === 'disponible booyah') {
       await updateConfig(supabase, 'stock_pase_booyah', 'true');
-      await sendMessage(botToken, chatId, '✅ Pase Booyah DISPONIBLE.');
+      await sendMessage(botToken, chatId, '✅ Pase Booyah DISPONIBLE en la pagina.');
       return res.status(200).json({ ok: true });
     }
 
-    // CAJAS EVO GENERAL
+    // CAJAS EVO GENERAL - marca categoria Y todas las cantidades
     if (text === 'agotado cajas') {
-      await updateConfig(supabase, 'stock_cajas_evo', 'false');
-      await sendMessage(botToken, chatId, '⚠️ TODAS las Cajas Evo AGOTADAS.');
+      await updateConfigMultiple(supabase, CLAVES_CAJAS, 'false');
+      await sendMessage(botToken, chatId,
+        '⚠️ TODAS las Cajas Evo AGOTADAS:\n' +
+        '📦 7, 12, 25, 52, 120, 280\n' +
+        'Todas marcadas como agotadas en la pagina.'
+      );
       return res.status(200).json({ ok: true });
     }
     if (text === 'disponible cajas') {
-      await updateConfig(supabase, 'stock_cajas_evo', 'true');
-      await sendMessage(botToken, chatId, '✅ TODAS las Cajas Evo DISPONIBLES.');
+      await updateConfigMultiple(supabase, CLAVES_CAJAS, 'true');
+      await sendMessage(botToken, chatId,
+        '✅ TODAS las Cajas Evo DISPONIBLES:\n' +
+        '📦 7, 12, 25, 52, 120, 280\n' +
+        'Todas marcadas como disponibles en la pagina.'
+      );
       return res.status(200).json({ ok: true });
     }
 
@@ -198,25 +206,33 @@ export default async function handler(req, res) {
     for (const cant of ['7','12','25','52','120','280']) {
       if (text === 'agotado caja ' + cant) {
         await updateConfig(supabase, 'stock_caja_' + cant, 'false');
-        await sendMessage(botToken, chatId, '⚠️ Caja Evo ' + cant + ' AGOTADA.');
+        await sendMessage(botToken, chatId, '⚠️ Caja Evo ' + cant + ' AGOTADA en la pagina.');
         return res.status(200).json({ ok: true });
       }
       if (text === 'disponible caja ' + cant) {
         await updateConfig(supabase, 'stock_caja_' + cant, 'true');
-        await sendMessage(botToken, chatId, '✅ Caja Evo ' + cant + ' DISPONIBLE.');
+        await sendMessage(botToken, chatId, '✅ Caja Evo ' + cant + ' DISPONIBLE en la pagina.');
         return res.status(200).json({ ok: true });
       }
     }
 
-    // FRAGMENTOS EVO GENERAL
+    // FRAGMENTOS EVO GENERAL - marca categoria Y todas las cantidades
     if (text === 'agotado fragmentos') {
-      await updateConfig(supabase, 'stock_fragmentos', 'false');
-      await sendMessage(botToken, chatId, '⚠️ TODOS los Fragmentos AGOTADOS.');
+      await updateConfigMultiple(supabase, CLAVES_FRAGS, 'false');
+      await sendMessage(botToken, chatId,
+        '⚠️ TODOS los Fragmentos Evo AGOTADOS:\n' +
+        '🔹 35, 50, 100, 250, 600, 1400\n' +
+        'Todos marcados como agotados en la pagina.'
+      );
       return res.status(200).json({ ok: true });
     }
     if (text === 'disponible fragmentos') {
-      await updateConfig(supabase, 'stock_fragmentos', 'true');
-      await sendMessage(botToken, chatId, '✅ TODOS los Fragmentos DISPONIBLES.');
+      await updateConfigMultiple(supabase, CLAVES_FRAGS, 'true');
+      await sendMessage(botToken, chatId,
+        '✅ TODOS los Fragmentos Evo DISPONIBLES:\n' +
+        '🔹 35, 50, 100, 250, 600, 1400\n' +
+        'Todos marcados como disponibles en la pagina.'
+      );
       return res.status(200).json({ ok: true });
     }
 
@@ -224,12 +240,12 @@ export default async function handler(req, res) {
     for (const cant of ['35','50','100','250','600','1400']) {
       if (text === 'agotado fragmento ' + cant) {
         await updateConfig(supabase, 'stock_frag_' + cant, 'false');
-        await sendMessage(botToken, chatId, '⚠️ Fragmento ' + cant + ' AGOTADO.');
+        await sendMessage(botToken, chatId, '⚠️ Fragmento Evo ' + cant + ' AGOTADO en la pagina.');
         return res.status(200).json({ ok: true });
       }
       if (text === 'disponible fragmento ' + cant) {
         await updateConfig(supabase, 'stock_frag_' + cant, 'true');
-        await sendMessage(botToken, chatId, '✅ Fragmento ' + cant + ' DISPONIBLE.');
+        await sendMessage(botToken, chatId, '✅ Fragmento Evo ' + cant + ' DISPONIBLE en la pagina.');
         return res.status(200).json({ ok: true });
       }
     }
@@ -243,15 +259,23 @@ export default async function handler(req, res) {
       const msg =
         'ESTADO ACTUAL\n\n' +
         'Tienda: ' + (cfg.tienda_abierta !== 'false' ? '✅ ABIERTA' : '🔴 CERRADA') + '\n' +
-        'Pase Booyah: ' + (cfg.stock_pase_booyah !== 'false' ? '✅' : '⚠️ AGOTADO') + '\n\n' +
+        'Pase Booyah: ' + (cfg.stock_pase_booyah !== 'false' ? '✅ Disponible' : '⚠️ AGOTADO') + '\n\n' +
         'CAJAS EVO:\n' +
         ['7','12','25','52','120','280'].map(c =>
-          c + ': ' + (cfg['stock_caja_' + c] !== 'false' ? '✅' : '⚠️ AGOTADO')
+          '  ' + c + ': ' + (cfg['stock_caja_' + c] !== 'false' ? '✅' : '⚠️ AGOTADO')
         ).join('\n') + '\n\n' +
         'FRAGMENTOS EVO:\n' +
         ['35','50','100','250','600','1400'].map(c =>
-          c + ': ' + (cfg['stock_frag_' + c] !== 'false' ? '✅' : '⚠️ AGOTADO')
-        ).join('\n');
+          '  ' + c + ': ' + (cfg['stock_frag_' + c] !== 'false' ? '✅' : '⚠️ AGOTADO')
+        ).join('\n') + '\n\n' +
+        'COMANDOS:\n' +
+        'tienda abrir / tienda cerrar\n' +
+        'agotado booyah / disponible booyah\n' +
+        'agotado cajas / disponible cajas\n' +
+        'agotado caja 7 / disponible caja 7\n' +
+        'agotado fragmentos / disponible fragmentos\n' +
+        'agotado fragmento 35 / disponible fragmento 35\n' +
+        'estado';
 
       await sendMessage(botToken, chatId, msg);
       return res.status(200).json({ ok: true });
@@ -261,7 +285,6 @@ export default async function handler(req, res) {
     const matchVerificado = text.match(/pedido\s+(mai-[a-z0-9]+)\s+verificado\s+y\s+pagado/i);
     if (matchVerificado) {
       const orderId = matchVerificado[1].toUpperCase();
-
       const { data: pedido } = await supabase
         .from('pedidos')
         .select('estado, jugador, id_jugador, producto, precio')
