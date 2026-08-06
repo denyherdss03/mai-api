@@ -57,8 +57,8 @@ async function verificarComprobante(imageBuffer, mimeType) {
     const base64Image = imageBuffer.toString('base64');
 
     const response = await anthropic.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 200,
+      model: 'claude-sonnet-4-6',
+      max_tokens: 50,
       messages: [{
         role: 'user',
         content: [
@@ -68,48 +68,37 @@ async function verificarComprobante(imageBuffer, mimeType) {
           },
           {
             type: 'text',
-            text: `Eres un verificador de comprobantes de pago para una tienda peruana de recargas de videojuegos.
+            text: `Eres un verificador de comprobantes de pago peruanos.
 
-APRUEBA con SI si la imagen muestra CUALQUIERA de estos casos:
+APRUEBA (SI) si la imagen muestra:
+1. Captura de pantalla de Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, u otro banco o billetera digital. Puede mostrar el nombre "Mia Jannet Mora Pasion" o similar como destinataria.
+2. Foto tomada con camara a una pantalla de celular donde se vea un pago, transferencia o monto de dinero en numeros.
+3. Voucher o recibo de pago fotografiado.
+4. Cualquier imagen donde se vea claramente un monto de dinero relacionado con una transaccion bancaria o de billetera digital.
 
-CASO 1 - Captura de pantalla directa:
-Captura de pantalla de cualquier app de pagos o banco como: Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, o cualquier otro banco o billetera digital del Peru o del mundo. Debe mostrar que se realizo una transferencia o pago.
-
-CASO 2 - Foto tomada con camara:
-Foto tomada con la camara del celular donde se vea la pantalla de otro celular o computadora mostrando un comprobante de pago. Aunque la foto sea tomada en angulo, con algo de brillo o no tan nitida, si se puede identificar que es una pantalla mostrando un pago, APRUEBA.
-
-CASO 3 - Voucher fisico:
-Foto de un voucher, recibo o ticket impreso de pago bancario.
-
-RECHAZA con NO SOLO si la imagen es CLARAMENTE alguno de estos:
+RECHAZA (NO) SOLO si es claramente:
 - Contenido sexual o pornografico
-- Meme o imagen de humor sin relacion a pagos
-- Foto de persona, rostro o cuerpo humano sin celular ni pantalla de pago
-- Dibujo animado, anime o ilustracion sin relacion a pagos
-- Paisaje, animal o naturaleza sin relacion a pagos
-- Captura de videojuego sin relacion a pagos
-- Captura de chat de WhatsApp, Telegram u otras apps de mensajeria
-- Captura de redes sociales como Instagram, TikTok, Facebook
+- Foto de persona sin contexto de pago (selfie, foto tipo pasaporte)
+- Captura de chat de WhatsApp, Telegram, SMS
+- Captura de red social (Instagram, TikTok, Facebook)
+- Foto de animal, paisaje o naturaleza
+- Dibujo animado o meme sin relacion a pagos
+- Captura de videojuego
 
-IMPORTANTE:
-- Si la imagen muestra un celular en la mano con una pantalla de pago visible, APRUEBA.
-- Si hay texto que menciona montos, fechas, nombres de bancos o billeteras, APRUEBA.
-- Ante la duda entre si es comprobante o no, APRUEBA. Es mejor aprobar una imagen dudosa que rechazar un pago real.
-- Solo rechaza lo que es CLARAMENTE inapropiado o no tiene ninguna relacion con pagos.
-
-Responde UNICAMENTE SI o NO.`,
+Si hay duda, responde SI.
+Responde solo SI o NO.`,
           },
         ],
       }],
     });
 
     const respuesta = response.content[0].text.trim().toUpperCase();
-    console.log('IA verificacion: ' + respuesta);
+    console.log('IA resultado: ' + respuesta);
     return respuesta.startsWith('SI');
 
   } catch (error) {
-    console.error('Error IA:', error.message);
-    // Si la IA falla, aprobar para no bloquear clientes reales
+    console.error('Error IA verificacion:', error.message);
+    // Si falla la IA, aprobar para no bloquear clientes reales
     return true;
   }
 }
@@ -171,7 +160,7 @@ export default async function handler(req, res) {
       cleanupTempFile(comprobanteFile);
       return res.status(400).json({
         success: false,
-        error: 'La imagen enviada no corresponde a un comprobante de pago. Por favor sube una captura de pantalla o foto de tu pago realizado en Yape, Plin u otra billetera digital.',
+        error: 'La imagen no corresponde a un comprobante de pago válido. Por favor sube una captura de pantalla o foto de tu pago realizado en Yape, Plin u otra billetera digital.',
       });
     }
 
