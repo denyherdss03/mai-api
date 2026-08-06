@@ -1,8 +1,6 @@
 /**
  * api/order.js
  * Endpoint: POST /api/order
- * La IA verifica ANTES de enviar a Telegram.
- * Si no es comprobante valido, el pedido se rechaza y NO llega a Telegram.
  */
 
 import fs from 'fs';
@@ -53,22 +51,14 @@ function cleanupTempFile(file) {
   }
 }
 
-/**
- * Verifica si la imagen es un comprobante de pago válido.
- * Se ejecuta ANTES de enviar a Telegram.
- * Timeout de 25 segundos para no bloquear al cliente.
- */
 async function verificarComprobante(imageBuffer, mimeType) {
   try {
     const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
     const base64Image = imageBuffer.toString('base64');
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
-
     const response = await anthropic.messages.create({
       model: 'claude-opus-4-6',
-      max_tokens: 150,
+      max_tokens: 200,
       messages: [{
         role: 'user',
         content: [
@@ -78,50 +68,49 @@ async function verificarComprobante(imageBuffer, mimeType) {
           },
           {
             type: 'text',
-            text: `Eres un sistema de verificacion de comprobantes de pago para una tienda peruana de recargas de videojuegos Free Fire.
+            text: `Eres un verificador de comprobantes de pago para una tienda peruana de recargas de videojuegos.
 
-Tu unica tarea es determinar si la imagen es un comprobante de pago de dinero real.
+APRUEBA con SI si la imagen muestra CUALQUIERA de estos casos:
 
-UN COMPROBANTE DE PAGO VALIDO debe mostrar CLARAMENTE:
-- Nombre de una app de pagos o banco: Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, o cualquier banco o billetera digital
-- Un monto de dinero en soles o dolares
-- Una fecha y hora de la transaccion
-- Un numero de operacion o codigo de transaccion
+CASO 1 - Captura de pantalla directa:
+Captura de pantalla de cualquier app de pagos o banco como: Yape, Plin, BCP, Interbank, BBVA, Scotiabank, Agora, Lemon Cash, Dale, Lukita, Tunki, o cualquier otro banco o billetera digital del Peru o del mundo. Debe mostrar que se realizo una transferencia o pago.
 
-TAMBIEN ES VALIDO: foto tomada con camara a una pantalla de celular que muestre claramente un comprobante de pago real con los datos mencionados arriba.
+CASO 2 - Foto tomada con camara:
+Foto tomada con la camara del celular donde se vea la pantalla de otro celular o computadora mostrando un comprobante de pago. Aunque la foto sea tomada en angulo, con algo de brillo o no tan nitida, si se puede identificar que es una pantalla mostrando un pago, APRUEBA.
 
-RECHAZA TODO lo que no sea comprobante de pago, SIN EXCEPCION:
-- Fotos de personas, rostros, cuerpos humanos
-- Contenido sexual, pornografico o inapropiado de cualquier tipo
-- Documentos de identidad (DNI, pasaporte, licencia)
-- Animales, mascotas, naturaleza, paisajes
-- Capturas de chats (WhatsApp, Telegram, Messenger)
-- Capturas de redes sociales (Instagram, TikTok, Facebook, Twitter)
-- Memes, GIFs, imagenes graciosas o de humor
-- Dibujos, ilustraciones, anime, caricaturas, imagenes animadas
-- Capturas de videojuegos o aplicaciones que no sean de pagos
-- Imagenes de QR sin datos de transaccion visible
-- Fotos de productos, objetos, ropa, comida, bebidas
-- Publicidad, logos o imagenes de marcas sin transaccion
-- Cualquier imagen que NO muestre una transaccion de dinero completada
+CASO 3 - Voucher fisico:
+Foto de un voucher, recibo o ticket impreso de pago bancario.
 
-IMPORTANTE: Si tienes CUALQUIER duda, responde NO. Es mejor rechazar una imagen dudosa que aceptar contenido inapropiado.
+RECHAZA con NO SOLO si la imagen es CLARAMENTE alguno de estos:
+- Contenido sexual o pornografico
+- Meme o imagen de humor sin relacion a pagos
+- Foto de persona, rostro o cuerpo humano sin celular ni pantalla de pago
+- Dibujo animado, anime o ilustracion sin relacion a pagos
+- Paisaje, animal o naturaleza sin relacion a pagos
+- Captura de videojuego sin relacion a pagos
+- Captura de chat de WhatsApp, Telegram u otras apps de mensajeria
+- Captura de redes sociales como Instagram, TikTok, Facebook
 
-Responde UNICAMENTE: SI (si es comprobante valido) o NO (si no lo es).`,
+IMPORTANTE:
+- Si la imagen muestra un celular en la mano con una pantalla de pago visible, APRUEBA.
+- Si hay texto que menciona montos, fechas, nombres de bancos o billeteras, APRUEBA.
+- Ante la duda entre si es comprobante o no, APRUEBA. Es mejor aprobar una imagen dudosa que rechazar un pago real.
+- Solo rechaza lo que es CLARAMENTE inapropiado o no tiene ninguna relacion con pagos.
+
+Responde UNICAMENTE SI o NO.`,
           },
         ],
       }],
     });
 
-    clearTimeout(timeout);
     const respuesta = response.content[0].text.trim().toUpperCase();
     console.log('IA verificacion: ' + respuesta);
     return respuesta.startsWith('SI');
 
   } catch (error) {
-    // Si la IA falla por timeout u otro error, rechazar por seguridad
-    console.error('Error IA verificacion:', error.message);
-    return false;
+    console.error('Error IA:', error.message);
+    // Si la IA falla, aprobar para no bloquear clientes reales
+    return true;
   }
 }
 
@@ -175,18 +164,17 @@ export default async function handler(req, res) {
     const imageBuffer = fs.readFileSync(comprobanteFile.filepath);
     const mimeType = comprobanteFile.mimetype || 'image/jpeg';
 
-    // ✅ VERIFICAR CON IA ANTES DE ENVIAR A TELEGRAM
-    const esComprobanteValido = await verificarComprobante(imageBuffer, mimeType);
+    // Verificar con IA ANTES de enviar a Telegram
+    const esValido = await verificarComprobante(imageBuffer, mimeType);
 
-    if (!esComprobanteValido) {
+    if (!esValido) {
       cleanupTempFile(comprobanteFile);
       return res.status(400).json({
         success: false,
-        error: 'No se encontró un comprobante de pago válido en la imagen. Por favor sube una captura o foto de tu pago realizado en Yape, Plin u otra billetera digital. Asegúrate de que se vea claramente el monto, fecha y número de operación.',
+        error: 'La imagen enviada no corresponde a un comprobante de pago. Por favor sube una captura de pantalla o foto de tu pago realizado en Yape, Plin u otra billetera digital.',
       });
     }
 
-    // ✅ Solo si la IA aprueba → guardar y enviar a Telegram
     const orderId = generateOrderId();
     const { fecha, hora } = getFormattedDateTime();
 
